@@ -42,9 +42,13 @@ vLocalNormal = normal;`
 			);
 
 		// Sample a map with triplanar blend; `tex` is the sampler2D uniform name.
+		// Three only declares normalMatrix in the fragment stage for object-space normal maps; uniforms are program-wide, so redeclaring it gets it set.
 		const triFn = `
 uniform float uTileStuds;
 uniform vec3 uMeshScale;
+#ifndef USE_NORMALMAP_OBJECTSPACE
+uniform mat3 normalMatrix;
+#endif
 varying vec3 vLocalPos;
 varying vec3 vLocalNormal;
 
@@ -57,6 +61,23 @@ vec4 triplanarSample(sampler2D tex, vec3 pos, vec3 nor) {
 	vec4 y = texture2D(tex, p.xz);
 	vec4 z = texture2D(tex, p.xy);
 	return x * blend.x + y * blend.y + z * blend.z;
+}
+
+// Whiteout-blended triplanar normal map, returned in object space.
+vec3 triplanarNormal(sampler2D tex, vec3 pos, vec3 nor, vec2 scale) {
+	vec3 n = normalize(nor);
+	vec3 blend = abs(n);
+	blend = pow(blend, vec3(4.0));
+	blend /= (blend.x + blend.y + blend.z + 1e-5);
+	vec3 p = pos / max(uTileStuds, 0.0001);
+	vec3 tx = texture2D(tex, p.zy).xyz * 2.0 - 1.0;
+	vec3 ty = texture2D(tex, p.xz).xyz * 2.0 - 1.0;
+	vec3 tz = texture2D(tex, p.xy).xyz * 2.0 - 1.0;
+	tx.xy *= scale; ty.xy *= scale; tz.xy *= scale;
+	tx = vec3(tx.xy + n.zy, abs(tx.z) * n.x);
+	ty = vec3(ty.xy + n.xz, abs(ty.z) * n.y);
+	tz = vec3(tz.xy + n.xy, abs(tz.z) * n.z);
+	return normalize(tx.zyx * blend.x + ty.xzy * blend.y + tz.xyz * blend.z);
 }
 `;
 
@@ -72,9 +93,14 @@ vec4 triplanarSample(sampler2D tex, vec3 pos, vec3 nor) {
 			.replace(
 				"#include <normal_fragment_maps>",
 				`#ifdef USE_NORMALMAP
-	vec3 mapN = triplanarSample(normalMap, vLocalPos * uMeshScale, vLocalNormal).xyz * 2.0 - 1.0;
-	mapN.xy *= normalScale;
-	normal = normalize(normalMatrix * mapN);
+	vec3 objN = triplanarNormal(normalMap, vLocalPos * uMeshScale, vLocalNormal, normalScale);
+	#ifdef FLIP_SIDED
+		objN = -objN;
+	#endif
+	#ifdef DOUBLE_SIDED
+		objN *= faceDirection;
+	#endif
+	normal = normalize(normalMatrix * objN);
 #endif`
 			)
 			.replace(
@@ -97,7 +123,7 @@ vec4 triplanarSample(sampler2D tex, vec3 pos, vec3 nor) {
 		material.userData.shader = shader;
 	};
 
-	material.customProgramCacheKey = () => "triplanar-pbr-v1";
+	material.customProgramCacheKey = () => "triplanar-pbr-v2";
 	material.needsUpdate = true;
 	return material;
 }
