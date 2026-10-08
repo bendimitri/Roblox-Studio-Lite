@@ -30,7 +30,6 @@ import {
 
 const DEG = MathUtils.DEG2RAD;
 const TMP = new Vector3();
-const TMP2 = new Vector3();
 
 /** Technology → shadow/culling budget (Future = highest fidelity). */
 export const TECHNOLOGY_TIER = {
@@ -199,25 +198,17 @@ export class LightingManager {
 		this.shadowLightCount = 0;
 		this.localLightCount = 0;
 		this.cullDistance = LIGHT_CULL_DISTANCE;
-		this._envIntensity = 0.4;
+		this._envIntensity = 0.2;
+		this._dayFactor = 1;
+		this._sunH = 1;
+		this._moonH = 0;
+		this._focus = new Vector3();
 		/** Optional Graphics Quality override (null = use place Technology as-is). */
 		this.graphicsOverride = null;
 
 		this.sun = new DirectionalLight(0xfff2dc, 1.2);
 		this.sun.name = "Lighting.Sun";
-		this.sun.castShadow = true;
-		this.sun.shadow.mapSize.set(2048, 2048);
-		this.sun.shadow.bias = -0.00035;
-		this.sun.shadow.normalBias = 0.55;
-		this.sun.shadow.radius = 2;
-		this.sun.shadow.camera.near = 1;
-		this.sun.shadow.camera.far = 500;
-		for (const k of ["left", "right", "top", "bottom"]) this.sun.shadow.camera[k] = k === "left" || k === "bottom" ? -140 : 140;
-		// Sun shadow pass only sees LAYER_SUN_SHADOW (includes light-host parts)
-		this.sun.shadow.camera.layers.disable(LAYER_VIEW);
-		this.sun.shadow.camera.layers.enable(LAYER_SUN_SHADOW);
-		this._mutedHost = null;
-		this._hookShadowPass(this.sun);
+		this._initCelestialCaster(this.sun);
 		this.sunTarget = this.sun.target;
 		this.sunTarget.position.set(0, 0, 0);
 		this.scene.add(this.sunTarget);
@@ -225,14 +216,20 @@ export class LightingManager {
 
 		this.moon = new DirectionalLight(0x8899cc, 0);
 		this.moon.name = "Lighting.Moon";
+		this._initCelestialCaster(this.moon);
 		this.moon.castShadow = false;
+		this.moonTarget = this.moon.target;
+		this.moonTarget.position.set(0, 0, 0);
+		this.scene.add(this.moonTarget);
 		this.scene.add(this.moon);
 
-		this.hemi = new HemisphereLight(0x6e7a8a, 0x2a2a2a, 0.55);
+		this._mutedHost = null;
+
+		this.hemi = new HemisphereLight(0x6e7a8a, 0x2a2a2a, 0);
 		this.hemi.name = "Lighting.Hemi";
 		this.scene.add(this.hemi);
 
-		this.ambient = new AmbientLight(0x464646, 0.35);
+		this.ambient = new AmbientLight(0x464646, 0);
 		this.ambient.name = "Lighting.Ambient";
 		this.scene.add(this.ambient);
 
@@ -266,8 +263,26 @@ export class LightingManager {
 		this._applySunShadow(lighting, this.tier());
 		this.refreshAllLocalShadows();
 		if (preset && this.scene.environmentIntensity !== undefined) {
-			this.scene.environmentIntensity = (this._envIntensity || 0.4) * (preset.iblScale ?? 1);
+			this.scene.environmentIntensity =
+				(this._envIntensity || 0.2) * (this._dayFactor ?? 1) * (preset.iblScale ?? 1);
 		}
+	}
+
+	/** Shared sun/moon shadow camera: only LAYER_SUN_SHADOW casters (includes light-host parts). */
+	_initCelestialCaster(light) {
+		light.castShadow = true;
+		light.shadow.mapSize.set(2048, 2048);
+		light.shadow.bias = -0.00035;
+		light.shadow.normalBias = 0.55;
+		light.shadow.radius = 2;
+		light.shadow.camera.near = 1;
+		light.shadow.camera.far = 520;
+		for (const k of ["left", "right", "top", "bottom"]) {
+			light.shadow.camera[k] = k === "left" || k === "bottom" ? -160 : 160;
+		}
+		light.shadow.camera.layers.disable(LAYER_VIEW);
+		light.shadow.camera.layers.enable(LAYER_SUN_SHADOW);
+		this._hookShadowPass(light);
 	}
 
 	/** Full sync from DataModel Lighting service. */
@@ -306,20 +321,33 @@ export class LightingManager {
 
 		const sunH = Math.max(0, Math.sin(sun.elevation));
 		const moonH = Math.max(0, Math.sin(moon.elevation));
+		this._sunH = sunH;
+		this._moonH = moonH;
 
-		// Position lights far along -direction so they shine toward origin
-		const dist = 180;
-		TMP.copy(sun.dir).multiplyScalar(dist);
-		this.sun.position.copy(TMP);
-		this.sun.target.position.set(0, 0, 0);
+		if (this.camera) {
+			this.camera.getWorldPosition(this._focus);
+			this._focus.y *= 0.25;
+		} else {
+			this._focus.set(0, 0, 0);
+		}
+
+		const dist = 220;
+		this.sun.position.copy(this._focus).addScaledVector(sun.dir, dist);
+		this.sun.target.position.copy(this._focus);
+		this.sun.target.updateMatrixWorld();
 		this.sun.color.copy(sunColorFromElevation(sun.elevation));
-		// Day intensity from Brightness × elevation curve
-		this.sun.intensity = brightness * (0.15 + sunH * 1.1);
+		this.sun.intensity = brightness * sunH * 1.25;
 
-		TMP2.copy(moon.dir).multiplyScalar(dist);
-		this.moon.position.copy(TMP2);
+		this.moon.position.copy(this._focus).addScaledVector(moon.dir, dist);
+		this.moon.target.position.copy(this._focus);
+		this.moon.target.updateMatrixWorld();
 		this.moon.color.copy(moonColor());
-		this.moon.intensity = brightness * 0.22 * moonH * (1 - sunH);
+		this.moon.intensity = brightness * 0.55 * moonH * (1 - sunH);
+
+		const global = lighting.GlobalShadows !== false && this.shadowTier !== "off";
+		const night = moonH > sunH + 0.04;
+		this.sun.castShadow = global && !night && this.sun.intensity > 0.03;
+		this.moon.castShadow = global && night && this.moon.intensity > 0.03;
 
 		if (lighting.TimeOfDay == null || lighting.TimeOfDay === "") {
 			lighting.TimeOfDay = clockTimeToTimeOfDay(clock);
@@ -330,16 +358,19 @@ export class LightingManager {
 
 	/** Darkens the cubemap at night so TimeOfDay actually changes the sky, like Roblox. */
 	_applySkyTint(elevation, sunH) {
-		const sky = this.scene.getObjectByName("Skybox");
-		if (!sky || !sky.material) return;
 		const tint = skyTintFromSun(elevation);
-		const mats = Array.isArray(sky.material) ? sky.material : [sky.material];
-		for (const m of mats) {
-			if (m && m.color) m.color.copy(tint);
+		const sky = this.scene.getObjectByName("Skybox");
+		if (sky && sky.material) {
+			const mats = Array.isArray(sky.material) ? sky.material : [sky.material];
+			for (const m of mats) {
+				if (m && m.color) m.color.copy(tint);
+			}
 		}
 		const day = MathUtils.smoothstep(sunH, 0, 0.35);
+		this._dayFactor = day;
 		if (this.scene.environmentIntensity !== undefined) {
-			this.scene.environmentIntensity = (this._envIntensity || 0.4) * (0.18 + 0.82 * day);
+			const ibl = this.graphicsOverride?.iblScale ?? 1;
+			this.scene.environmentIntensity = (this._envIntensity || 0.2) * (0.03 + 0.97 * day) * ibl;
 		}
 	}
 
@@ -351,18 +382,20 @@ export class LightingManager {
 		const envDiff = Math.max(0, Number(lighting.EnvironmentDiffuseScale) || 0);
 		const envSpec = Math.max(0, Number(lighting.EnvironmentSpecularScale) || 0);
 
-		// OutdoorAmbient → sky lobe; Ambient → ground / fully shadowed areas
+		// Hemisphere/IBL fill ignores walls — keep them off so enclosed rooms stay dark
+		// unless the player adds Point/Spot/Surface lights. Outdoor is sun/moon only.
 		this.hemi.color.copy(multiplyShift(outdoor, shiftTop, 0.3));
 		this.hemi.groundColor.copy(multiplyShift(ambient, shiftBot, 0.3));
-		this.hemi.intensity = 0.35 + envDiff * 0.65;
+		this.hemi.intensity = 0;
 
 		this.ambient.color.copy(multiplyShift(ambient, shiftBot, 0.2));
-		this.ambient.intensity = 0.12 + ambient.r * 0.15 + envDiff * 0.25;
+		const ambLuma = (ambient.r + ambient.g + ambient.b) / 3;
+		this.ambient.intensity = ambLuma * 0.06;
 
-		// IBL proxy: scene.environmentIntensity (r163+) or material.envMapIntensity
-		this._envIntensity = 0.15 + envSpec * 0.85 + envDiff * 0.25;
+		this._envIntensity = envSpec * 0.18 + envDiff * 0.04;
 		if (this.scene.environmentIntensity !== undefined) {
-			this.scene.environmentIntensity = this._envIntensity;
+			const ibl = this.graphicsOverride?.iblScale ?? 1;
+			this.scene.environmentIntensity = this._envIntensity * (0.03 + 0.97 * (this._dayFactor ?? 1)) * ibl;
 		}
 		this._tintEnvironment(envDiff, outdoor);
 	}
@@ -395,14 +428,21 @@ export class LightingManager {
 		const soft = Math.max(0, Math.min(1, Number(lighting.ShadowSoftness)));
 		const softVal = Number.isFinite(soft) ? soft : 0.5;
 		const global = lighting.GlobalShadows !== false && this.shadowTier !== "off";
-		this.sun.castShadow = global;
-		this.sun.shadow.mapSize.set(tier.sunMap, tier.sunMap);
-		this.sun.shadow.radius = 0.5 + softVal * 4.5;
-		this.sun.shadow.bias = -0.00035 - softVal * 0.00015;
-		this.sun.shadow.normalBias = 0.45 + softVal * 0.25;
-		if (this.sun.shadow.map) {
-			this.sun.shadow.map.dispose();
-			this.sun.shadow.map = null;
+		const night = this._moonH > this._sunH + 0.04;
+		this.sun.castShadow = global && !night && this.sun.intensity > 0.03;
+		this.moon.castShadow = global && night && this.moon.intensity > 0.03;
+		this._configureDirShadow(this.sun, tier, softVal);
+		this._configureDirShadow(this.moon, tier, softVal);
+	}
+
+	_configureDirShadow(light, tier, softVal) {
+		light.shadow.mapSize.set(tier.sunMap, tier.sunMap);
+		light.shadow.radius = 0.5 + softVal * 4.5;
+		light.shadow.bias = -0.00035 - softVal * 0.00015;
+		light.shadow.normalBias = 0.45 + softVal * 0.25;
+		if (light.shadow.map) {
+			light.shadow.map.dispose();
+			light.shadow.map = null;
 		}
 	}
 
