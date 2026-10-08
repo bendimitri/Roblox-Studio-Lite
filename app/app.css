@@ -1284,6 +1284,34 @@ body.resizing-row, body.resizing-row * { cursor: row-resize !important; }
     color: #8a8a8a;
 }
 
+.saved-places {
+    margin-top: 28px;
+}
+
+.saved-places h2 {
+    margin: 0 0 4px;
+    font-size: 22px;
+    font-weight: 600;
+}
+
+.saved-places > p {
+    margin: 0 0 14px;
+    color: var(--text-muted);
+}
+
+.template-thumb.saved {
+    background: linear-gradient(180deg, #2d4a63 0 48%, #1c2833 48% 100%);
+    color: #d7e6f2;
+}
+
+.template-card.saved-card .template-sub {
+    font-variant-numeric: tabular-nums;
+}
+
+.btn.discard {
+    color: #a1260d;
+}
+
 /* ---------- Script editor ---------- */
 
 .editor {

@@ -807,6 +807,7 @@ export default class StudioTools extends EventTarget {
 			if (this.undoStack.length > HISTORY_LIMIT) this.undoStack.shift();
 			this.redoStack.length = 0;
 			this._emitState();
+			this.dispatchEvent(new CustomEvent("historychange"));
 			return entry;
 		}
 		const entry = {
@@ -820,6 +821,7 @@ export default class StudioTools extends EventTarget {
 		if (this.undoStack.length > HISTORY_LIMIT) this.undoStack.shift();
 		this.redoStack.length = 0;
 		this._emitState();
+		this.dispatchEvent(new CustomEvent("historychange"));
 		return entry;
 	}
 
@@ -834,6 +836,7 @@ export default class StudioTools extends EventTarget {
 		if (this.undoStack.length > HISTORY_LIMIT) this.undoStack.shift();
 		this.redoStack.length = 0;
 		this._emitState();
+		this.dispatchEvent(new CustomEvent("historychange"));
 	}
 
 	_stepHistory(from, to, which, verb) {

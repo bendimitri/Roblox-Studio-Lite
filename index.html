@@ -83,6 +83,11 @@
                                     </div>
                                 </div>
                                 <div class="template-grid" id="template-grid"></div>
+                                <div class="saved-places" id="saved-places" hidden>
+                                    <h2>Salvos</h2>
+                                    <p>Mapas compactados em <code>saves/</code>. Abra para continuar de onde parou.</p>
+                                    <div class="template-grid" id="saved-grid"></div>
+                                </div>
                                 <p class="start-note">Alpha software: expect bugs. Example places and Roblox icons are copyright of their respective owners. Not affiliated with Roblox Corporation.</p>
                             </div>
                         </div>
@@ -153,6 +158,37 @@
 
         <div class="popup-layer" id="popup-layer"></div>
         <div class="toast-layer" id="toast-layer" aria-live="polite"></div>
+
+        <dialog id="unsaved" class="dialog">
+            <header class="dialog-header">
+                <h2>Sair sem salvar?</h2>
+                <button type="button" class="dialog-close close" aria-label="Close"></button>
+            </header>
+            <div class="dialog-body">
+                <p id="unsaved-msg">As alterações neste mapa não serão salvas.</p>
+            </div>
+            <footer class="dialog-footer">
+                <button type="button" class="btn cancel">Cancelar</button>
+                <button type="button" class="btn discard">Sair sem salvar</button>
+                <button type="button" class="btn btn-primary save">Salvar</button>
+            </footer>
+        </dialog>
+
+        <dialog id="saveplace" class="dialog">
+            <header class="dialog-header">
+                <h2>Salvar mapa</h2>
+                <button type="button" class="dialog-close close" aria-label="Close"></button>
+            </header>
+            <div class="dialog-body">
+                <label class="field-label" for="saveplace-name">Nome</label>
+                <input type="text" id="saveplace-name" class="text-input" maxlength="80" autofocus>
+                <p class="muted">O arquivo compactado vai para a pasta <code>saves/</code> do projeto.</p>
+            </div>
+            <footer class="dialog-footer">
+                <button type="button" class="btn cancel">Cancelar</button>
+                <button type="button" class="btn btn-primary save">Salvar</button>
+            </footer>
+        </dialog>
 
         <dialog id="remoteload" class="dialog">
             <header class="dialog-header">

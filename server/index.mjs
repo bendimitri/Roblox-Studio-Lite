@@ -12,6 +12,7 @@
  */
 import { createServer } from "node:http";
 import { createReadStream, existsSync, statSync } from "node:fs";
+import { ensureSavesDir, listSaves, readSave, writeSave, deleteSave, readJsonBody } from "./saves.mjs";
 import { dirname, extname, join, normalize } from "node:path";
 import { fileURLToPath } from "node:url";
 import { config, hasCredential } from "./env.mjs";
@@ -22,7 +23,9 @@ import { ApiError, badIdError } from "./errors.mjs";
 import { normalizeAssetId } from "../app/roblox/AssetId.js";
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
+const SAVES_DIR = join(ROOT, "saves");
 const DEV = process.env.NODE_ENV !== "production";
+ensureSavesDir(SAVES_DIR);
 
 const metaCache = new TtlCache(5 * 60 * 1000);
 const thumbCache = new TtlCache(30 * 60 * 1000);
@@ -56,7 +59,7 @@ function corsHeaders(origin) {
 		: (origin && config.allowedOrigins.includes(origin) ? origin : config.allowedOrigins[0] || "*");
 	return {
 		"Access-Control-Allow-Origin": allow,
-		"Access-Control-Allow-Methods": "GET, POST, OPTIONS",
+		"Access-Control-Allow-Methods": "GET, POST, DELETE, OPTIONS",
 		"Access-Control-Allow-Headers": "Content-Type",
 		"Vary": "Origin"
 	};
@@ -185,6 +188,31 @@ const server = createServer(async (req, res) => {
 			return await handleSearch(params, origin, res);
 		}
 
+		if (path === "/api/saves" && req.method === "GET") {
+			return sendJson(res, 200, { success: true, saves: listSaves(SAVES_DIR) }, origin);
+		}
+		if (path === "/api/saves" && req.method === "POST") {
+			const body = await readJsonBody(req);
+			if (!body || !Array.isArray(body.instances)) {
+				return sendJson(res, 400, { success: false, error: { code: "bad_request", message: "instances[] obrigatório." } }, origin);
+			}
+			const saved = writeSave(SAVES_DIR, { id: body.id, name: body.name, instances: body.instances });
+			return sendJson(res, 200, { success: true, save: saved }, origin);
+		}
+		const saveMatch = path.match(/^\/api\/saves\/([^/]+)$/);
+		if (saveMatch) {
+			const id = decodeURIComponent(saveMatch[1]);
+			if (req.method === "GET") {
+				const save = readSave(SAVES_DIR, id);
+				if (!save) return sendJson(res, 404, { success: false, error: { code: "not_found", message: "Save não encontrado." } }, origin);
+				return sendJson(res, 200, { success: true, save }, origin);
+			}
+			if (req.method === "DELETE") {
+				const ok = deleteSave(SAVES_DIR, id);
+				return sendJson(res, ok ? 200 : 404, { success: ok }, origin);
+			}
+		}
+
 		if (req.method === "GET") return serveStatic(path, res, origin);
 		sendJson(res, 404, { success: false, error: { code: "not_found", message: "Not found." } }, origin);
 	} catch (err) {
@@ -196,4 +224,5 @@ server.listen(config.port, () => {
 	console.log(`Studio Lite Roblox proxy on http://localhost:${config.port}`);
 	console.log(`  credentials: ${hasCredential() ? (config.apiKey ? "API key" : "cookie") : "NONE (thumbnails + public content only)"}`);
 	console.log(`  static root: ${ROOT}`);
+	console.log(`  saves: ${SAVES_DIR}`);
 });

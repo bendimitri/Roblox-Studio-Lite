@@ -28,6 +28,7 @@ import { ScriptEditor } from './scripting/ScriptEditor.js';
 import { LuauRuntime } from './scripting/LuauRuntime.js';
 import { RobloxBridge } from './scripting/RobloxBridge.js';
 import { buildRbxlx, downloadRbxlx } from './export/RbxlxExporter.js';
+import { serializeDataModel, deserializeDataModel, slugify } from './export/PlaceSave.js';
 import { robloxAssetImporter } from './roblox/RobloxAssetImporter.js';
 import { robloxConfig } from './roblox/config.js';
 import { classifyQuery } from './roblox/AssetId.js';
@@ -96,6 +97,8 @@ let isPlayMode = false;
 let busy = false;
 let activeDoc = "place";
 let placeName = "Start Page";
+let placeDirty = false;
+let currentSaveId = null;
 const jsTreeData = [];
 let treeRefresh2 = () => {};
 
@@ -211,9 +214,25 @@ function setStatus(text) {
 
 function setTitle(name) {
 	placeName = name;
-	document.title = `${name} - Studio Lite`;
-	$id("place-name").textContent = name;
-	$id("doc-place-label").textContent = name;
+	refreshPlaceTitle();
+}
+
+function refreshPlaceTitle() {
+	const label = placeLoaded && placeDirty ? `${placeName} *` : placeName;
+	document.title = `${label} - Studio Lite`;
+	$id("place-name").textContent = label;
+	$id("doc-place-label").textContent = label;
+}
+
+function markPlaceDirty() {
+	if (!placeLoaded || placeDirty) return;
+	placeDirty = true;
+	refreshPlaceTitle();
+}
+
+function clearPlaceDirty() {
+	placeDirty = false;
+	refreshPlaceTitle();
 }
 
 function showMessage(text) {
@@ -606,6 +625,7 @@ function toggleFlag(flag) {
 	if (!instances.length) return;
 	const value = !instances.every((i) => i[flag]);
 	for (const inst of instances) inst[flag] = value;
+	markPlaceDirty();
 	print(`${flag} = ${value} on ${tools.selectedName}`);
 	updateRibbon();
 	refreshSelectionProperties();
@@ -765,6 +785,7 @@ function translateModel(model, dx, dy, dz) {
 	}
 	const wp = model.WorldPivot || (model.WorldPivot = { Position: { X: 0, Y: 0, Z: 0 }, Orientation: { X: 0, Y: 0, Z: 0 } });
 	wp.Position = { X: (wp.Position?.X || 0) + dx, Y: (wp.Position?.Y || 0) + dy, Z: (wp.Position?.Z || 0) + dz };
+	markPlaceDirty();
 }
 
 /** Current WorldPivot of a Model: stored value, else the center of its rendered meshes. */
@@ -823,6 +844,7 @@ function buildDescriptor(instance, prop, parentName) {
 					set: (hex) => {
 						const c3 = hexToColor3(hex);
 						instance.Color = { ...c3 };
+						markPlaceDirty();
 						afterLight();
 					}
 				};
@@ -833,6 +855,7 @@ function buildDescriptor(instance, prop, parentName) {
 					get: () => instance[prop.field],
 					set: (hex) => {
 						instance[prop.field] = hexToColor3(hex);
+						markPlaceDirty();
 						afterLighting();
 					}
 				};
@@ -842,9 +865,9 @@ function buildDescriptor(instance, prop, parentName) {
 			return { ...base, readOnly: true, get: () => instance.Color3 || instance.Color };
 		case "enum":
 			if (prop.name === "Material") return { ...base, get: getRaw, set: (v) => setInstanceMaterial(instance, v) };
-			return { ...base, get: getRaw, set: (v) => { instance[field] = v; afterLight(); afterLighting(); } };
+			return { ...base, get: getRaw, set: (v) => { instance[field] = v; markPlaceDirty(); afterLight(); afterLighting(); } };
 		case "bool":
-			return { ...base, get: () => !!getRaw(), set: (v) => { instance[field] = v; afterLight(); afterLighting(); updateRibbon(); } };
+			return { ...base, get: () => !!getRaw(), set: (v) => { instance[field] = v; markPlaceDirty(); afterLight(); afterLighting(); updateRibbon(); } };
 		case "float01":
 			return { ...base, get: getRaw, set: (v) => setInstanceScalar(instance, field, v) };
 		case "number":
@@ -854,6 +877,7 @@ function buildDescriptor(instance, prop, parentName) {
 				get: getRaw,
 				set: (v) => {
 					instance[field] = v;
+					markPlaceDirty();
 					if (isLightingSvc && prop.name === "ClockTime") instance.TimeOfDay = clockTimeToTimeOfDay(v);
 					afterLight();
 					afterLighting();
@@ -869,18 +893,19 @@ function buildDescriptor(instance, prop, parentName) {
 					set: (v) => {
 						instance.TimeOfDay = v;
 						instance.ClockTime = timeOfDayToClockTime(v);
+						markPlaceDirty();
 						afterLighting();
 					}
 				};
 			}
-			return { ...base, get: getRaw, set: (v) => { instance[field] = v; } };
+			return { ...base, get: getRaw, set: (v) => { instance[field] = v; markPlaceDirty(); } };
 		case "path":
 			return { ...base, readOnly: true, get: () => parentName ?? parentNameOf(treeIdOf(instance)) ?? "nil" };
 		case "primarypart":
 			return { ...base, get: () => { const p = instance.PrimaryPart; return p ? (p.Name || String(p)) : null; }, onPick: () => pickPrimaryPart(instance) };
 		case "Vector3":
-			if (prop.name === "Size") return { ...base, get: () => instance.Size, set: (v) => { instance.Size = v; applyPartSizeToMesh(instance); } };
-			return { ...base, get: getRaw, set: (v) => { instance[field] = v; } };
+			if (prop.name === "Size") return { ...base, get: () => instance.Size, set: (v) => { instance.Size = v; markPlaceDirty(); applyPartSizeToMesh(instance); } };
+			return { ...base, get: getRaw, set: (v) => { instance[field] = v; markPlaceDirty(); } };
 		case "CFrame":
 			if (prop.name === "WorldPivot") return cframeModelDescriptor(base, instance);
 			return cframePartDescriptor(base, instance);
@@ -901,12 +926,14 @@ function cframePartDescriptor(base, instance) {
 			const cf = instance.CFrame || (instance.CFrame = { Position: { X: 0, Y: 0, Z: 0 }, Orientation: { X: 0, Y: 0, Z: 0 }, Components: [0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 1] });
 			cf.Position = { X: v.X, Y: v.Y, Z: v.Z };
 			if (Array.isArray(cf.Components) && cf.Components.length >= 3) { cf.Components[0] = v.X; cf.Components[1] = v.Y; cf.Components[2] = v.Z; }
+			markPlaceDirty();
 			applyPartPositionToMesh(instance);
 		},
 		setOrientation: (v) => {
 			const cf = instance.CFrame || (instance.CFrame = { Position: { X: 0, Y: 0, Z: 0 }, Orientation: { X: 0, Y: 0, Z: 0 }, Components: [0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 1] });
 			cf.Orientation = { X: v.X, Y: v.Y, Z: v.Z };
 			writeComponentsFromOrientation(cf, cf.Orientation);
+			markPlaceDirty();
 			applyPartOrientationToMesh(instance);
 		}
 	};
@@ -923,6 +950,7 @@ function cframeModelDescriptor(base, model) {
 }
 
 function setInstanceColor(instance, hex) {
+	markPlaceDirty();
 	const c3 = hexToColor3(hex);
 	instance.Color3 = { ...c3 };
 	if (instance.Color) instance.Color = { ...c3 };
@@ -932,6 +960,7 @@ function setInstanceColor(instance, hex) {
 }
 
 function setInstanceMaterial(instance, name) {
+	markPlaceDirty();
 	instance.Material = name;
 	if (instance._baseplateGrid) instance._baseplateGrid = false;
 	const mesh = meshForInstance(instance);
@@ -945,6 +974,7 @@ function setInstanceMaterial(instance, name) {
 }
 
 function setInstanceScalar(instance, field, value) {
+	markPlaceDirty();
 	instance[field] = value;
 	if (field === "Transparency") {
 		const mesh = meshForInstance(instance);
@@ -953,6 +983,7 @@ function setInstanceScalar(instance, field, value) {
 }
 
 function renameInstance(instance, name) {
+	markPlaceDirty();
 	instance.Name = name;
 	const id = treeIdOf(instance);
 	if (id !== undefined && treeRef.get_node(String(id))) treeRef.rename_node(String(id), name);
@@ -1145,6 +1176,7 @@ function deleteTreeNode(item) {
 	}
 	renderer.deleteNode(item.id);
 	treeRef.delete_node(String(item.id));
+	markPlaceDirty();
 	propsView.clear();
 	print(`Removido ${instance.ClassName} "${instance.Name}"`);
 }
@@ -1257,6 +1289,7 @@ async function addCopy(source, parentId, dy) {
 	const copy = cloneInstanceTree(source);
 	if (dy) offsetInstanceTree(copy, dy);
 	const { id, item } = await renderer.addInstance(copy, parentId);
+	markPlaceDirty();
 	if (LIGHT_CLASSES.has(copy.ClassName)) renderer.attachLightToPart(parentId, copy);
 	insertExplorerNode(parentId, item);
 	treeRef.deselect_all(true);
@@ -1329,6 +1362,7 @@ tools.addEventListener("selectionchange", (e) => {
 tools.addEventListener("statechange", () => {
 	updateRibbon();
 });
+tools.addEventListener("historychange", () => markPlaceDirty());
 tools.addEventListener("transformend", (e) => {
 	const target = e.detail.target;
 	if (target && target.kind === "bone") showBoneProperties(target.object);
@@ -1823,6 +1857,7 @@ async function importObject3D(file) {
 	tools.select(renderer.targetForTreeId(id), "insert");
 	if (tools.selectedMeshes && tools.selectedMeshes.length) renderer.focusOn(tools.selectedMeshes);
 	await loadingScreen.hide();
+	markPlaceDirty();
 	print(`Imported 3D object "${geo.name}" (${geo.triangles.toLocaleString()} triângulos, tamanho original ${geo.size.X.toFixed(1)}×${geo.size.Y.toFixed(1)}×${geo.size.Z.toFixed(1)})`);
 	renderer.domElement.focus({ preventScroll: true });
 }
@@ -1834,6 +1869,9 @@ $id("file-button").addEventListener("click", (e) => {
 		{ label: "Load from server…", icon: "server", onClick: openRemoteDialog },
 		{ label: "New Baseplate", icon: "baseplate", onClick: () => openPlace({ template: true, name: "Baseplate" }) },
 		"sep",
+		{ label: "Salvar", icon: "notes", hint: "Ctrl+S", disabled: !placeLoaded || isPlayMode, onClick: () => savePlace() },
+		{ label: "Salvar como…", icon: "notes", hint: "Ctrl+Shift+S", disabled: !placeLoaded || isPlayMode, onClick: () => savePlaceAs() },
+		"sep",
 		{ label: "Configuração da experiência…", icon: "settings", hint: getExperienceSettings().avatarRigType, onClick: openExperienceSettings },
 		{ label: "Exportar para Roblox (.rbxlx)", icon: "roblox", disabled: !placeLoaded || isPlayMode, onClick: () => ExportToRoblox() },
 		"sep",
@@ -1843,7 +1881,11 @@ $id("file-button").addEventListener("click", (e) => {
 		{ label: "Render image…", icon: "camera", disabled: !placeLoaded, onClick: openRenderDialog },
 		{ label: "Missing assets…", icon: "warning", disabled: !placeLoaded, onClick: () => handleAction("missing-assets") },
 		"sep",
-		{ label: "Reload", icon: "reload", onClick: () => window.location.reload() },
+		{ label: "Reload", icon: "reload", onClick: async () => {
+			if (!(await confirmLeaveIfDirty())) return;
+			placeDirty = false;
+			window.location.reload();
+		} },
 		"sep",
 		{ label: "Changelog", icon: "notes", onClick: openChangelog },
 		{ label: "About Studio Lite", icon: "info", onClick: openAbout }
@@ -1880,6 +1922,7 @@ async function insertRecipe(recipe, ndc) {
 	insertExplorerNode(workspace.id, item);
 	tools.select(renderer.targetForTreeId(id), "insert");
 	toolbox.markRecent(recipe.id);
+	markPlaceDirty();
 	print(`Inserted ${recipe.name} at (${origin.x}, ${origin.y}, ${origin.z})`);
 	renderer.domElement.focus({ preventScroll: true });
 }
@@ -1932,6 +1975,7 @@ async function insertRobloxAsset(assetOrId, ndc) {
 		if (tools.selectedMeshes && tools.selectedMeshes.length) renderer.focusOn(tools.selectedMeshes);
 	}
 	if (result.detail) print(result.detail);
+	markPlaceDirty();
 	print(`Imported ${result.name || "asset"} (${result.category}) from Roblox`);
 	renderer.domElement.focus({ preventScroll: true });
 }
@@ -1986,7 +2030,8 @@ const scriptEditor = new ScriptEditor(editor, {
 		path: fullNameOf(instance),
 		kind: SCRIPT_KIND[instance.ClassName] || "",
 		issue: scriptPlacementIssue(instance, parentRecordOf)
-	})
+	}),
+	onChange: () => markPlaceDirty()
 });
 
 function activateDoc(docId) {
@@ -2039,6 +2084,144 @@ docTabs.addEventListener("click", (e) => {
 	if (tab) activateDoc(tab.dataset.doc);
 });
 
+/* ---------- Place save / unsaved changes ---------- */
+
+function confirmLeaveIfDirty() {
+	if (!placeLoaded || !placeDirty) return Promise.resolve(true);
+	return new Promise((resolve) => {
+		const dlg = $id("unsaved");
+		$id("unsaved-msg").textContent = `Você alterou "${placeName}". Se sair agora, as alterações não serão salvas.`;
+		let done = false;
+		const finish = (ok) => {
+			if (done) return;
+			done = true;
+			if (dlg.open) dlg.close();
+			resolve(ok);
+		};
+		dlg.querySelector(".cancel").onclick = () => finish(false);
+		dlg.querySelector(".close").onclick = () => finish(false);
+		dlg.querySelector(".discard").onclick = () => finish(true);
+		dlg.querySelector(".save").onclick = async () => {
+			if (dlg.open) dlg.close();
+			const saved = await savePlace();
+			finish(!!saved);
+		};
+		dlg.addEventListener("cancel", (e) => { e.preventDefault(); finish(false); }, { once: true });
+		dlg.showModal();
+	});
+}
+
+function askSaveName(defaultName) {
+	return new Promise((resolve) => {
+		const dlg = $id("saveplace");
+		const input = $id("saveplace-name");
+		input.value = defaultName || placeName || "Place";
+		const finish = (name) => {
+			dlg.close();
+			resolve(name);
+		};
+		dlg.querySelector(".cancel").onclick = () => finish(null);
+		dlg.querySelector(".close").onclick = () => finish(null);
+		dlg.querySelector(".save").onclick = () => finish(input.value.trim() || null);
+		input.onkeyup = (e) => { if (e.key === "Enter") finish(input.value.trim() || null); };
+		dlg.addEventListener("cancel", (e) => { e.preventDefault(); finish(null); }, { once: true });
+		dlg.showModal();
+		input.focus();
+		input.select();
+	});
+}
+
+async function savePlace() {
+	if (!placeLoaded || !renderer.data) {
+		toast("Abra um mapa antes de salvar");
+		return false;
+	}
+	if (isPlayMode) {
+		toast("Pare o Play antes de salvar");
+		return false;
+	}
+	if (currentSaveId) return writePlaceSave(currentSaveId, placeName);
+	return savePlaceAs();
+}
+
+async function savePlaceAs() {
+	const name = await askSaveName(placeName);
+	if (!name) return false;
+	return writePlaceSave(slugify(name), name);
+}
+
+async function writePlaceSave(id, name) {
+	try {
+		const instances = serializeDataModel(renderer.data);
+		const res = await fetch("/api/saves", {
+			method: "POST",
+			headers: { "Content-Type": "application/json" },
+			body: JSON.stringify({ id, name, instances })
+		});
+		const json = await res.json();
+		if (!res.ok || !json.success) throw new Error(json.error?.message || `HTTP ${res.status}`);
+		currentSaveId = json.save.id;
+		setTitle(json.save.name || name);
+		clearPlaceDirty();
+		print(`Mapa salvo em saves/${currentSaveId}.json.gz`);
+		toast(`Salvo: ${json.save.name}`);
+		refreshSavedPlaces();
+		return true;
+	} catch (err) {
+		print(`Falha ao salvar: ${err.message}`, "error");
+		toast("Não foi possível salvar. O servidor local precisa estar ligado.");
+		return false;
+	}
+}
+
+async function openSavedPlace(id) {
+	try {
+		const res = await fetch(`/api/saves/${encodeURIComponent(id)}`);
+		const json = await res.json();
+		if (!res.ok || !json.success) throw new Error(json.error?.message || `HTTP ${res.status}`);
+		const instances = deserializeDataModel(json.save.instances || []);
+		await openPlace({ name: json.save.name || id, saveId: json.save.id || id, instances });
+	} catch (err) {
+		print(`Falha ao abrir o save: ${err.message}`, "error");
+		toast("Não foi possível abrir o mapa salvo.");
+	}
+}
+
+function formatSavedAt(iso) {
+	if (!iso) return "Salvo neste computador";
+	try {
+		return new Date(iso).toLocaleString("pt-BR", { dateStyle: "short", timeStyle: "short" });
+	} catch {
+		return iso;
+	}
+}
+
+async function refreshSavedPlaces() {
+	const section = $id("saved-places");
+	const grid = $id("saved-grid");
+	if (!section || !grid) return;
+	try {
+		const res = await fetch("/api/saves");
+		if (!res.ok) throw new Error();
+		const json = await res.json();
+		const saves = json.saves || [];
+		grid.innerHTML = "";
+		section.hidden = saves.length === 0;
+		for (const save of saves) {
+			const card = document.createElement("button");
+			card.type = "button";
+			card.className = "template-card saved-card";
+			card.innerHTML = `<div class="template-thumb saved">${icon("baseplate")}</div><div class="template-meta"><div class="template-name"></div><div class="template-sub"></div></div>`;
+			card.querySelector(".template-name").textContent = save.name;
+			card.querySelector(".template-sub").textContent = formatSavedAt(save.savedAt);
+			card.addEventListener("click", () => openSavedPlace(save.id));
+			grid.appendChild(card);
+		}
+	} catch {
+		section.hidden = true;
+	}
+}
+
 /* ---------- Loading places ---------- */
 
 function barState(className) {
@@ -2046,10 +2229,11 @@ function barState(className) {
 }
 
 /**
- * @param {{ url?: string, file?: File, template?: boolean, name?: string }} source
+ * @param {{ url?: string, file?: File, template?: boolean, name?: string, saveId?: string, instances?: object[] }} source
  */
 async function openPlace(source) {
 	if (busy) return;
+	if (!(await confirmLeaveIfDirty())) return;
 	if (isPlayMode) playMode.stop();
 	busy = true;
 	closePopup();
@@ -2079,7 +2263,11 @@ async function openPlace(source) {
 			print(`Creating new place from template "${name}"`);
 			loadingScreen.setProgress(0.5, "Criando place…");
 			await renderer.loadDataModel(makeBaseplateDataModel(), { cameraPosition: [0, 22, 46], cameraTarget: [0, 2, 0] });
-			} else {
+		} else if (source.instances) {
+			print(`Abrindo save "${name}"`);
+			loadingScreen.setProgress(0.5, "Restaurando o mapa salvo…");
+			await renderer.loadDataModel(source.instances, { cameraPosition: [0, 22, 46], cameraTarget: [0, 2, 0] });
+		} else {
 			let buffer;
 			if (source.file) {
 				print(`DataModel Loading ${source.file.name}`);
@@ -2128,6 +2316,8 @@ async function openPlace(source) {
 	gui.attach(renderer.findNodeByClassName("StarterGui")?.instance || null);
 	gui.setWorldSource(renderer.findNodeByClassName("Workspace")?.instance || null);
 	placeLoaded = true;
+	currentSaveId = source.saveId || null;
+	clearPlaceDirty();
 	busy = false;
 	showMessage("");
 	applyViewState();
@@ -2198,6 +2388,7 @@ function buildStartPage() {
 		e.target.value = "";
 		if (file) openPlace({ file });
 	});
+	refreshSavedPlaces();
 }
 
 /* ---------- Dialogs ---------- */
@@ -2335,6 +2526,11 @@ document.addEventListener("keydown", (e) => {
 		return;
 	}
 	if (isPlayMode) return;
+	if ((e.ctrlKey || e.metaKey) && e.code === "KeyS") {
+		e.preventDefault();
+		if (placeLoaded) (e.shiftKey ? savePlaceAs() : savePlace());
+		return;
+	}
 	if ((e.ctrlKey || e.metaKey) && e.shiftKey && e.code === "KeyX") {
 		e.preventDefault();
 		layout.setVisible("explorer", true);
@@ -2358,6 +2554,12 @@ document.addEventListener("keydown", (e) => {
 		else if (e.code === "KeyV") { e.preventDefault(); pasteClipboard(); }
 		else if (e.code === "KeyD") { e.preventDefault(); duplicateSelection(); }
 	}
+});
+
+window.addEventListener("beforeunload", (e) => {
+	if (!placeLoaded || !placeDirty) return;
+	e.preventDefault();
+	e.returnValue = "";
 });
 
 window.addEventListener("resize", () => renderer.resize());

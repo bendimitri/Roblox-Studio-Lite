@@ -2,6 +2,10 @@
 node_modules/
 **/node_modules/
 
+# User place saves (gzipped JSON in /saves)
+saves/*
+!saves/.gitkeep
+
 # Downloaded Roblox API dump used only to regenerate ApiSchema.js (large; not committed)
 tools/_api-dump-latest.json
 
