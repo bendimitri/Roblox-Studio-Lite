@@ -1347,7 +1347,7 @@ decode = function(t, i)
 		return Rect.new(t[i + 1], t[i + 2], t[i + 3], t[i + 4]), i + 5
 	elseif k == "IO" then
 		local input = setmetatable({
-			KeyCode = enumItem("KeyCode", t[i + 1]) or Enum.KeyCode.Unknown,
+			KeyCode = enumItem("KeyCode", t[i + 1]) or Enum.KeyCode.None,
 			UserInputType = enumItem("UserInputType", t[i + 2]),
 			Position = v3(t[i + 3], t[i + 4], 0),
 			Delta = v3(t[i + 5], t[i + 6], 0),

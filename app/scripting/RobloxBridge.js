@@ -259,7 +259,7 @@ function keyCodeName(e) {
 	else if (!name && /^Digit\d$/.test(c)) name = DIGITS[+c[5]];
 	else if (!name && /^Numpad\d$/.test(c)) name = `Keypad${DIGITS[+c[6]]}`;
 	else if (!name && /^F\d{1,2}$/.test(c)) name = c;
-	return name && Object.hasOwn(API_ENUMS.KeyCode, name) ? name : "Unknown";
+	return name && Object.hasOwn(API_ENUMS.KeyCode, name) ? name : "None";
 }
 
 export class RobloxBridge {
@@ -1785,7 +1785,7 @@ export class RobloxBridge {
 		this._checkTouches();
 		if (this.mouse.moved) {
 			this.mouse.moved = false;
-			this._input("InputChanged", "Unknown", "MouseMovement", "Change");
+			this._input("InputChanged", "None", "MouseMovement", "Change");
 			this.mouse.dx = this.mouse.dy = 0;
 		}
 		if (this.dirtyColliders.size) {
@@ -1866,12 +1866,12 @@ export class RobloxBridge {
 		const button = (e) => ["MouseButton1", "MouseButton3", "MouseButton2"][e.button] || "MouseButton1";
 		this._onMouseDown = (e) => {
 			this._trackMouse(e);
-			this._input("InputBegan", "Unknown", button(e), "Begin");
+			this._input("InputBegan", "None", button(e), "Begin");
 			if (e.button === 0) this._clickDetectors();
 		};
 		this._onMouseUp = (e) => {
 			this._trackMouse(e);
-			this._input("InputEnded", "Unknown", button(e), "End");
+			this._input("InputEnded", "None", button(e), "End");
 		};
 		this._onMouseMove = (e) => {
 			this._trackMouse(e);
