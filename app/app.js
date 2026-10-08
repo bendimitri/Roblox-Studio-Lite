@@ -40,8 +40,6 @@ const startPage = $id("start-page");
 const msg = viewport.querySelector(".message");
 const loadingScreen = new LoadingScreen(viewport);
 const editor = viewport.querySelector(".editor");
-const hud = viewport.querySelector(".tool-hud");
-const hudHint = hud.querySelector(".tool-hud-hint");
 const bar = document.querySelector(".statusbar [role=progressbar]");
 const statusEl = $id("status");
 const docTabs = $id("doc-tabs");
@@ -147,7 +145,6 @@ playMode.addEventListener("change", (e) => {
 	if (isPlayMode) animEditor.pause();
 	closePopup();
 	updateRibbon();
-	updateHud();
 	if (!isPlayMode) renderer.resize();
 });
 
@@ -1307,7 +1304,6 @@ function parentRecordOf(instance) {
 tools.addEventListener("selectionchange", (e) => {
 	const { target, source } = e.detail;
 	updateRibbon();
-	updateHud();
 	if (source === "explorer" || source === "gui") return;
 	if (guiEditor.selected) guiEditor.select(null, "3d");
 	treeRef.deselect_all(true);
@@ -1332,7 +1328,6 @@ tools.addEventListener("selectionchange", (e) => {
 
 tools.addEventListener("statechange", () => {
 	updateRibbon();
-	updateHud();
 });
 tools.addEventListener("transformend", (e) => {
 	const target = e.detail.target;
@@ -1855,41 +1850,7 @@ $id("file-button").addEventListener("click", (e) => {
 	]);
 });
 
-/* ---------- Transform HUD ---------- */
-
-const hudButtons = hud.querySelectorAll("button[data-mode]");
-for (const btn of hudButtons) {
-	btn.addEventListener("click", () => {
-		const mode = btn.dataset.mode;
-		tools.setMode(tools.mode === mode ? null : mode);
-		renderer.domElement.focus({ preventScroll: true });
-	});
-}
-
-function updateHud() {
-	const cam = renderer.controls;
-	for (const btn of hudButtons) {
-		const active = tools.mode === btn.dataset.mode;
-		btn.classList.toggle("active", active);
-		btn.setAttribute("aria-pressed", String(active));
-	}
-	hud.classList.toggle("is-looking", cam.mode !== "idle");
-	const name = tools.selectedName;
-	let hint;
-	if (cam.mode === "play") hint = "Primeira pessoa · WASD/QE voar · ESC para sair";
-	else if (cam.playArmed) hint = "Clique na viewport para entrar em primeira pessoa · ESC cancela";
-	else if (cam.mode === "look") hint = "Olhando ao redor · solte o botão direito para voltar";
-	else if (tools.dragging) hint = "Arrastando · ESC cancela";
-	else if (!name) hint = tools.mode ? "Clique numa peça para exibir o gizmo" : "Clique para selecionar (Alt+clique: peça) · segure o botão direito para olhar · WASD/QE voar";
-	else if (tools.mode === "translate") hint = `${name} · arraste as setas · ←↑→↓ move 1 stud (Ctrl 0.1, Shift+↑↓ eixo Y) · ESC solta`;
-	else if (tools.mode === "rotate") hint = `${name} · arraste os anéis · ←→ gira em Y, ↑↓ inclina (Ctrl 1°) · Shift livre · ESC solta`;
-	else if (tools.mode === "scale") hint = `${name} · arraste as alças · ←→ X, ↑↓ Y, Shift+↑↓ Z (Ctrl 0.1) · ESC solta`;
-	else hint = `${name} selecionado · [1] Mover · [2] Rotacionar · [3] Escalar · Del apaga`;
-	hudHint.textContent = hint;
-}
-
 renderer.controls.addEventListener("modechange", () => {
-	updateHud();
 	updateRibbon();
 });
 
@@ -2169,10 +2130,8 @@ async function openPlace(source) {
 	placeLoaded = true;
 	busy = false;
 	showMessage("");
-	hud.hidden = false;
 	applyViewState();
 	updateRibbon();
-	updateHud();
 	print("Edit mode: click to select, [1] Move, [2] Rotate, [3] Scale, hold Right Click to look around, ESC for first-person");
 
 	await waitForAssets((done, total) => {
@@ -2412,7 +2371,6 @@ setTitle("Start Page");
 applyViewState();
 updatePanelState();
 updateRibbon();
-updateHud();
 print("Welcome to Studio Lite (alpha-2)!");
 
 // ?place=path/to/file.rbxl opens a place hosted next to the app straight away.
