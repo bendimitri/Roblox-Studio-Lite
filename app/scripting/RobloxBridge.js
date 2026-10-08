@@ -1655,6 +1655,8 @@ export class RobloxBridge {
 		}
 
 		const camera = { ClassName: "Camera", Name: "Camera", Children: [] };
+		/** undefined = default (the Humanoid), null = cleared by a script. */
+		let cameraSubject;
 		this.parents.set(camera, this.workspace);
 		this.virtual.set(camera, {
 			get: (key) => {
@@ -1669,8 +1671,13 @@ export class RobloxBridge {
 					const rect = this.renderer.domElement.getBoundingClientRect();
 					return ["V2", rect.width, rect.height];
 				}
-				if (key === "CameraType") return ["E", "CameraType", "Custom"];
-				if (key === "CameraSubject") return ["i", this.idOf(humanoid)];
+				if (key === "CameraType") return ["E", "CameraType", this.player ? this.player.cameraType : "Custom"];
+				if (key === "CameraSubject") return cameraSubject === undefined ? ["i", this.idOf(humanoid)] : cameraSubject ? ["i", this.idOf(cameraSubject)] : ["n"];
+				if (key === "Focus") {
+					cam.updateMatrixWorld();
+					const e = cam.matrixWorld.elements;
+					return ["CF", e[12] - e[8] * 10, e[13] - e[9] * 10, e[14] - e[10] * 10, e[0], e[4], e[8], e[1], e[5], e[9], e[2], e[6], e[10]];
+				}
 				return null;
 			},
 			call: (method, args) => {
@@ -1688,10 +1695,30 @@ export class RobloxBridge {
 				const onScreen = depth > 0 && Math.abs(ndc.x) <= 1 && Math.abs(ndc.y) <= 1;
 				return ["V3", x, y, depth, "v", onScreen];
 			},
-			set: (key) => {
-				if (key === "CFrame" || key === "CameraType" || key === "CameraSubject" || key === "FieldOfView") {
-					this._warnOnce("camera", "Camera scriptada ainda não é suportada no Studio Lite — a câmera segue o personagem");
-					return null;
+			set: (key, val) => {
+				const p = this.player;
+				switch (key) {
+					case "CFrame":
+						if (val.kind !== "CF") return "Unable to assign property CFrame. CoordinateFrame expected";
+						if (p) p.setCameraCFrame(val.value);
+						return null;
+					case "CameraType": {
+						const name = val.kind === "E" && val.value.enumType === "CameraType" ? val.value.name : val.kind === "v" ? enumName("CameraType", val.value) : null;
+						if (!name) return "Unable to assign property CameraType. EnumItem of type CameraType expected";
+						if (p) p.setCameraType(name);
+						return null;
+					}
+					case "FieldOfView":
+						if (val.kind !== "v" || typeof val.value !== "number") return "Unable to assign property FieldOfView. number expected";
+						if (p) p.setFieldOfView(val.value);
+						return null;
+					case "CameraSubject":
+						if (val.kind !== "i" && val.kind !== "n") return "Unable to assign property CameraSubject. Instance expected";
+						cameraSubject = val.kind === "i" ? val.value : null;
+						return null;
+					case "Focus":
+						if (val.kind !== "CF") return "Unable to assign property Focus. CoordinateFrame expected";
+						return null;
 				}
 				return undefined;
 			}

@@ -9,7 +9,8 @@ import {
 	LoopOnce,
 	Box3,
 	Euler,
-	MathUtils
+	MathUtils,
+	Matrix4
 } from '../thirdparty/three/three.module.js';
 import { GLTFLoader } from '../thirdparty/three/addons/loaders/GLTFLoader.js';
 import { isTypingTarget, isDialogOpen } from '../controls/InputFocus.js';
@@ -70,6 +71,8 @@ const _v = new Vector3();
 const _v2 = new Vector3();
 const _euler = new Euler(0, 0, 0, "YXZ");
 const _boxHit = new Vector3();
+const _m4 = new Matrix4();
+const _scale = new Vector3();
 
 function lerpAngle(a, b, t) {
 	const d = Math.atan2(Math.sin(b - a), Math.cos(b - a));
@@ -104,6 +107,9 @@ export class PlayerController {
 		/** Mouse look sensitivity multiplier (1..10 from ESC menu → ~0.4..1.6). */
 		this.mouseSensitivity = 5;
 		this._shoulder = 0;
+		/** Camera.CameraType from scripts: Scriptable / Fixed stop the follow camera. */
+		this.cameraType = "Custom";
+		this._editFov = camera ? camera.fov : null;
 
 		this.group = new Group();
 		this.group.name = "Player";
@@ -223,6 +229,10 @@ export class PlayerController {
 	/** Removes the avatar and frees every GPU resource it created. */
 	dispose() {
 		this._detachInput();
+		if (this.camera && this._editFov !== null && this.camera.fov !== this._editFov) {
+			this.camera.fov = this._editFov;
+			this.camera.updateProjectionMatrix();
+		}
 		if (this.mixer) {
 			this.mixer.stopAllAction();
 			this.mixer.uncacheRoot(this.mixer.getRoot());
@@ -760,7 +770,26 @@ export class PlayerController {
 
 	/* ---------- Camera ---------- */
 
+	/* ---------- workspace.CurrentCamera ---------- */
+
+	setCameraType(name) {
+		this.cameraType = name;
+	}
+
+	/** Camera.CFrame: row-major [x, y, z, R00..R22]; the lens looks down the CFrame's LookVector (-Z). */
+	setCameraCFrame(c) {
+		_m4.set(c[3], c[4], c[5], c[0], c[6], c[7], c[8], c[1], c[9], c[10], c[11], c[2], 0, 0, 0, 1);
+		_m4.decompose(this.camera.position, this.camera.quaternion, _scale);
+		this.camera.updateMatrixWorld();
+	}
+
+	setFieldOfView(fov) {
+		this.camera.fov = MathUtils.clamp(fov, 1, 120);
+		this.camera.updateProjectionMatrix();
+	}
+
 	_updateCamera() {
+		if (this.cameraType === "Scriptable" || this.cameraType === "Fixed") return;
 		// Re-applied right before rendering so mouse motion since the physics step shows up the same frame.
 		if (this.shiftLock) {
 			_euler.setFromQuaternion(this.rig.quaternion, "YXZ");
