@@ -1,0 +1,15 @@
+{
+  "name": "studio-lite-roblox-proxy",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Backend proxy for Studio Lite: talks to the official Roblox Creator Store / Asset Delivery / Thumbnails APIs and keeps all credentials server-side.",
+  "scripts": {
+    "start": "node index.mjs",
+    "dev": "node --watch index.mjs",
+    "test": "node --test"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}

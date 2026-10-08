@@ -1,0 +1,260 @@
+<!DOCTYPE html>
+<html lang="en">
+    <head>
+        <meta charset="utf-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1">
+        <title>Studio Lite</title>
+        <link rel="icon" href="favicon.ico">
+        <link rel="preconnect" href="https://fonts.googleapis.com">
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Source+Code+Pro:wght@400;500&family=Source+Sans+3:wght@400;500;600;700&display=swap">
+        <link rel="stylesheet" href="./app/thirdparty/jstree/style.min.css" />
+        <link rel="stylesheet" href="./app/app.css" />
+        <script src="./app/thirdparty/jstree/jquery.min.js"></script>
+        <script src="./app/thirdparty/jstree/jstree.min.js"></script>
+    </head>
+    <body>
+        <div class="app" id="app">
+            <header class="ribbon" id="ribbon">
+                <div class="ribbon-tabs" role="tablist" id="ribbon-tabs">
+                    <button type="button" class="ribbon-file" id="file-button" aria-haspopup="menu">FILE</button>
+                    <div class="ribbon-spacer"></div>
+                    <div class="quick-access" role="toolbar" aria-label="Quick access">
+                        <button type="button" class="quick-btn" id="undo-button" title="Undo (Ctrl+Z)" aria-label="Undo" disabled></button>
+                        <button type="button" class="quick-btn" id="redo-button" title="Redo (Ctrl+Y)" aria-label="Redo" disabled></button>
+                    </div>
+                    <span class="ribbon-place" id="place-name">Start Page</span>
+                    <a class="ribbon-link" href="https://github.com/asicosilomu/studio-lite" target="_blank" rel="noopener">GitHub</a>
+                </div>
+                <div class="ribbon-body" id="ribbon-body"></div>
+            </header>
+
+            <main class="workspace" id="workspace">
+                <section class="panel panel-toolbox" id="panel-toolbox" data-panel="toolbox">
+                    <header class="panel-header">
+                        <span class="panel-title">Toolbox</span>
+                        <div class="panel-actions">
+                            <button type="button" class="panel-btn" data-panel-menu="toolbox" title="Toolbox options"></button>
+                            <button type="button" class="panel-btn" data-panel-close="toolbox" title="Close"></button>
+                        </div>
+                    </header>
+                    <div class="toolbox-tabs" role="tablist" id="toolbox-tabs"></div>
+                    <div class="toolbox-search">
+                        <select id="toolbox-category" aria-label="Category">
+                            <option value="all">Models</option>
+                            <option value="parts">Parts</option>
+                            <option value="nature">Nature</option>
+                            <option value="props">Props</option>
+                            <option value="buildings">Buildings</option>
+                        </select>
+                        <label class="search-field">
+                            <input type="search" id="toolbox-search" placeholder="Search" autocomplete="off">
+                        </label>
+                    </div>
+                    <div class="toolbox-grid" id="toolbox-grid"></div>
+                    <footer class="toolbox-footer" id="toolbox-footer">
+                        <span>Background:</span>
+                        <button type="button" data-bg="white" class="active"><i class="swatch swatch-white"></i>White</button>
+                        <button type="button" data-bg="black"><i class="swatch swatch-black"></i>Black</button>
+                        <button type="button" data-bg="none"><i class="swatch swatch-none"></i>None</button>
+                    </footer>
+                </section>
+                <div class="splitter splitter-v" data-split="left" aria-hidden="true"></div>
+
+                <section class="center">
+                    <div class="doc-tabs" id="doc-tabs" role="tablist">
+                        <button type="button" class="doc-tab active" data-doc="place" role="tab">
+                            <span class="doc-tab-label" id="doc-place-label">Start Page</span>
+                        </button>
+                    </div>
+                    <div class="viewport" id="viewport">
+                        <div class="tool-hud" hidden>
+                            <div class="tool-hud-bar" role="toolbar" aria-label="Transform tools">
+                                <button type="button" class="tool-btn" data-mode="translate" aria-pressed="false" title="Mover (1)"><kbd>1</kbd> Mover</button>
+                                <button type="button" class="tool-btn" data-mode="rotate" aria-pressed="false" title="Rotacionar (2)"><kbd>2</kbd> Rotacionar</button>
+                                <button type="button" class="tool-btn" data-mode="scale" aria-pressed="false" title="Escalar (3)"><kbd>3</kbd> Escalar</button>
+                            </div>
+                            <div class="tool-hud-hint" aria-live="polite"></div>
+                        </div>
+                        <div class="message" hidden><div class="spinner"></div><span></span></div>
+                        <div class="start-page" id="start-page">
+                            <div class="start-inner">
+                                <div class="start-head">
+                                    <div>
+                                        <h1>New</h1>
+                                        <p>Pick a template or open a binary <code>.rbxl</code> / <code>.rbxm</code> file. Studio Lite runs fully in your browser.</p>
+                                    </div>
+                                    <div class="start-actions">
+                                        <label class="btn btn-primary" for="browse">Open file…</label>
+                                        <input type="file" id="browse" accept=".rbxl,.rbxm" hidden>
+                                        <button type="button" class="btn" id="open-remote">Load from server…</button>
+                                    </div>
+                                </div>
+                                <div class="template-grid" id="template-grid"></div>
+                                <p class="start-note">Alpha software: expect bugs. Example places and Roblox icons are copyright of their respective owners. Not affiliated with Roblox Corporation.</p>
+                            </div>
+                        </div>
+                        <div class="editor" hidden></div>
+                    </div>
+                    <div class="splitter splitter-h splitter-anim" data-split="anim" aria-hidden="true"></div>
+                    <section class="panel panel-anim" id="panel-anim" data-panel="anim" aria-label="Animation Editor"></section>
+                    <div class="splitter splitter-h" data-split="bottom" aria-hidden="true"></div>
+                    <section class="panel panel-output" id="panel-output" data-panel="output">
+                        <header class="panel-header">
+                            <div class="panel-tabs" role="tablist">
+                                <button type="button" class="panel-tab active" data-output-tab="all" role="tab">Output</button>
+                                <button type="button" class="panel-tab" data-output-tab="errors" role="tab">Errors <span class="badge" id="error-count" hidden>0</span></button>
+                            </div>
+                            <div class="panel-actions">
+                                <button type="button" class="panel-btn" data-output-clear title="Clear output"></button>
+                                <button type="button" class="panel-btn" data-panel-menu="output" title="Output options"></button>
+                                <button type="button" class="panel-btn" data-panel-close="output" title="Close"></button>
+                            </div>
+                        </header>
+                        <div class="log" id="log" role="log"></div>
+                    </section>
+                </section>
+
+                <div class="splitter splitter-v" data-split="right" aria-hidden="true"></div>
+                <aside class="right-column" id="right-column">
+                    <section class="panel panel-explorer" id="panel-explorer" data-panel="explorer">
+                        <header class="panel-header">
+                            <span class="panel-title" id="explorer-title">Explorer</span>
+                            <div class="panel-actions">
+                                <button type="button" class="panel-btn" data-panel-menu="explorer" title="Explorer options"></button>
+                                <button type="button" class="panel-btn" data-panel-close="explorer" title="Close"></button>
+                            </div>
+                        </header>
+                        <label class="panel-filter">
+                            <input type="search" id="explorer-filter" placeholder="Filter workspace (Ctrl+Shift+X)" autocomplete="off">
+                        </label>
+                        <div class="tree" id="datamodel-explorer"></div>
+                        <div class="tree2" id="scene-explorer" hidden></div>
+                    </section>
+                    <div class="splitter splitter-h" data-split="stack" aria-hidden="true"></div>
+                    <section class="panel panel-properties" id="panel-properties" data-panel="properties">
+                        <header class="panel-header">
+                            <span class="panel-title" id="propertiesTitle">Properties</span>
+                            <div class="panel-actions">
+                                <button type="button" class="panel-btn" data-panel-menu="properties" title="Properties options"></button>
+                                <button type="button" class="panel-btn" data-panel-close="properties" title="Close"></button>
+                            </div>
+                        </header>
+                        <label class="panel-filter">
+                            <input type="search" id="properties-filter" placeholder="Filter Properties (Ctrl+Shift+P)" autocomplete="off">
+                        </label>
+                        <div class="properties" id="properties">
+                            <p class="empty-state">Select an object to see its properties.</p>
+                        </div>
+                    </section>
+                </aside>
+            </main>
+
+            <footer class="commandbar">
+                <input type="text" id="command-input" placeholder="Run a command" autocomplete="off" spellcheck="false" aria-label="Command bar (JavaScript, has access to renderer and print)">
+            </footer>
+            <footer class="statusbar">
+                <span class="status" id="status">Ready</span>
+                <div class="progress"><div role="progressbar" class="animate"></div></div>
+            </footer>
+        </div>
+
+        <div class="popup-layer" id="popup-layer"></div>
+        <div class="toast-layer" id="toast-layer" aria-live="polite"></div>
+
+        <dialog id="remoteload" class="dialog">
+            <header class="dialog-header">
+                <h2 id="dialog-title">Load from server</h2>
+                <button type="button" class="dialog-close close" aria-label="Close"></button>
+            </header>
+            <div class="dialog-body">
+                <label class="field-label" for="remotepath">Path to an RBXL/RBXM file on this server</label>
+                <input type="text" id="remotepath" class="text-input" placeholder="examples/City.rbxl" autofocus>
+                <p class="field-label">Or pick an example</p>
+                <ul role="listbox" class="listbox" id="examples"></ul>
+            </div>
+            <footer class="dialog-footer">
+                <button type="button" class="btn cancel">Cancel</button>
+                <button type="button" class="btn btn-primary open" disabled>Open</button>
+            </footer>
+        </dialog>
+
+        <dialog id="experience" class="dialog dialog-experience">
+            <header class="dialog-header">
+                <h2 id="dialog-title">Configuração da experiência</h2>
+                <button type="button" class="dialog-close close" aria-label="Close"></button>
+            </header>
+            <div class="dialog-body">
+                <nav class="exp-tabs" role="tablist">
+                    <button type="button" class="exp-tab active" role="tab" aria-selected="true">Avatar</button>
+                </nav>
+                <p class="field-label">Tipo de avatar (Humanoid.RigType) usado ao dar Play</p>
+                <div class="exp-rigs" role="radiogroup" aria-label="Tipo de avatar">
+                    <label class="exp-rig">
+                        <input type="radio" name="exp-rigtype" value="R15">
+                        <span class="exp-rig-figure exp-fig-r15" aria-hidden="true"><i class="h"></i><i class="ut"></i><i class="lt"></i><i class="a l u"></i><i class="a l d"></i><i class="a r u"></i><i class="a r d"></i><i class="g l u"></i><i class="g l d"></i><i class="g r u"></i><i class="g r d"></i></span>
+                        <span class="exp-rig-text"><strong>R15</strong><small>15 partes articuladas: cotovelos, joelhos, mãos e pés. Animações mais fluidas.</small></span>
+                    </label>
+                    <label class="exp-rig">
+                        <input type="radio" name="exp-rigtype" value="R6">
+                        <span class="exp-rig-figure exp-fig-r6" aria-hidden="true"><i class="h"></i><i class="t"></i><i class="a l"></i><i class="a r"></i><i class="g l"></i><i class="g r"></i></span>
+                        <span class="exp-rig-text"><strong>R6</strong><small>Clássico de 6 partes: cabeça, tronco, braços e pernas inteiros.</small></span>
+                    </label>
+                </div>
+                <p class="muted exp-note">O personagem nasce no SpawnLocation com animações padrão de idle, andar e pular do tipo escolhido.</p>
+            </div>
+            <footer class="dialog-footer">
+                <button type="button" class="btn cancel">Cancelar</button>
+                <button type="button" class="btn btn-primary save">Salvar</button>
+            </footer>
+        </dialog>
+
+        <dialog id="about" class="dialog">
+            <header class="dialog-header">
+                <h2 id="dialog-title">About Studio Lite</h2>
+                <button type="button" class="dialog-close close" aria-label="Close"></button>
+            </header>
+            <div class="dialog-body">
+                <p><strong>Studio Lite</strong> by Asicosilomu · version alpha-1</p>
+                <p>This project is made possible by multiple open source libraries. See the notice for more information.</p>
+                <p class="muted">Roblox Studio icons are Copyright &copy; Roblox Corporation. Studio Lite is not affiliated with or endorsed by Roblox Corporation.</p>
+            </div>
+            <footer class="dialog-footer">
+                <button type="button" class="btn view-notice">View notice</button>
+                <button type="button" class="btn btn-primary ok">OK</button>
+            </footer>
+        </dialog>
+
+        <dialog id="render" class="dialog dialog-wide">
+            <header class="dialog-header">
+                <h2 id="dialog-title">Render image</h2>
+                <button type="button" class="dialog-close close" aria-label="Close"></button>
+            </header>
+            <div class="dialog-body">
+                <div class="render-controls">
+                    <label class="field-label">Resolution
+                        <span class="inline-fields"><input type="number" id="renderwidth" class="text-input" min="16"> × <input type="number" id="renderheight" class="text-input" min="16"></span>
+                    </label>
+                    <button type="button" class="btn btn-primary" id="dorender">Render</button>
+                </div>
+                <p class="muted">Your image will appear below. Right click to save.</p>
+                <img alt="Rendered image" class="render-preview" />
+            </div>
+            <footer class="dialog-footer">
+                <button type="button" class="btn ok">Close</button>
+            </footer>
+        </dialog>
+
+        <dialog id="notepad" class="dialog dialog-wide">
+            <header class="dialog-header">
+                <h2 id="dialog-title">Notepad</h2>
+                <button type="button" class="dialog-close close" aria-label="Close"></button>
+            </header>
+            <div class="dialog-body">
+                <textarea readonly class="notepad-text"></textarea>
+            </div>
+        </dialog>
+
+        <script src="./app/app.js" type="module"></script>
+    </body>
+</html>

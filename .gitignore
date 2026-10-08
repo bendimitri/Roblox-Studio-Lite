@@ -1,0 +1,30 @@
+# Dependencies
+node_modules/
+**/node_modules/
+
+# Downloaded Roblox API dump used only to regenerate ApiSchema.js (large; not committed)
+tools/_api-dump-latest.json
+
+# Env / secrets
+.env
+.env.*
+!.env.example
+**/.env
+server/.env
+
+# Build / cache
+.next/
+dist/
+build/
+.cache/
+
+# Logs
+*.log
+npm-debug.log*
+
+# OS / editor
+.DS_Store
+Thumbs.db
+*.swp
+.idea/
+.vscode/
