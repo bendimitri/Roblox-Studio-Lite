@@ -171,6 +171,21 @@ function moonColor() {
 	return new Color(0.55, 0.62, 0.85);
 }
 
+/**
+ * Skybox texture multiply (Roblox: the same cubemap goes dark at night).
+ * night=1 below the horizon, 0 with the sun well up; dusk adds a warm horizon glow.
+ */
+export function skyTintFromSun(elevation) {
+	const s = Math.sin(elevation);
+	const night = 1 - MathUtils.smoothstep(s, -0.06, 0.28);
+	const dusk = Math.exp(-Math.max(0, s) * 9) * Math.max(0, s + 0.18);
+	const c = new Color();
+	c.r = Math.min(1, MathUtils.lerp(0.026, 1, 1 - night * 0.974) + dusk * 0.28);
+	c.g = Math.min(1, MathUtils.lerp(0.032, 1, 1 - night * 0.968) + dusk * 0.08);
+	c.b = Math.min(1, MathUtils.lerp(0.08, 1, 1 - night * 0.90) + dusk * 0.02);
+	return c;
+}
+
 export class LightingManager {
 	/**
 	 * @param {{ scene: import('../thirdparty/three/three.core.js').Scene, renderer: *, camera?: * }} ctx
@@ -278,7 +293,12 @@ export class LightingManager {
 	}
 
 	_applyCelestial(lighting) {
-		const clock = Number(lighting.ClockTime);
+		let clock = Number(lighting.ClockTime);
+		const fromTod = lighting.TimeOfDay ? timeOfDayToClockTime(String(lighting.TimeOfDay)) : NaN;
+		if (Number.isFinite(fromTod) && (!Number.isFinite(clock) || Math.abs(clock - fromTod) > 0.5 / 3600)) {
+			clock = fromTod;
+			lighting.ClockTime = fromTod;
+		}
 		const lat = Number(lighting.GeographicLatitude) || 0;
 		const brightness = Math.max(0, Number(lighting.Brightness) || 0);
 		const sun = celestialDirection(clock, lat, false);
@@ -303,6 +323,23 @@ export class LightingManager {
 
 		if (lighting.TimeOfDay == null || lighting.TimeOfDay === "") {
 			lighting.TimeOfDay = clockTimeToTimeOfDay(clock);
+		}
+
+		this._applySkyTint(sun.elevation, sunH);
+	}
+
+	/** Darkens the cubemap at night so TimeOfDay actually changes the sky, like Roblox. */
+	_applySkyTint(elevation, sunH) {
+		const sky = this.scene.getObjectByName("Skybox");
+		if (!sky || !sky.material) return;
+		const tint = skyTintFromSun(elevation);
+		const mats = Array.isArray(sky.material) ? sky.material : [sky.material];
+		for (const m of mats) {
+			if (m && m.color) m.color.copy(tint);
+		}
+		const day = MathUtils.smoothstep(sunH, 0, 0.35);
+		if (this.scene.environmentIntensity !== undefined) {
+			this.scene.environmentIntensity = (this._envIntensity || 0.4) * (0.18 + 0.82 * day);
 		}
 	}
 
