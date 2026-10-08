@@ -101,12 +101,12 @@ function spotConeGeometry(reach, halfAngle, segments = 40) {
 	return g;
 }
 
-function frustumGeometry(nw, nh, fw, fh, range) {
+function frustumGeometry(nw, nh, fw, fh, depth) {
 	const n = [
 		[-nw / 2, -nh / 2, 0], [nw / 2, -nh / 2, 0], [nw / 2, nh / 2, 0], [-nw / 2, nh / 2, 0]
 	];
 	const f = [
-		[-fw / 2, -fh / 2, range], [fw / 2, -fh / 2, range], [fw / 2, fh / 2, range], [-fw / 2, fh / 2, range]
+		[-fw / 2, -fh / 2, depth], [fw / 2, -fh / 2, depth], [fw / 2, fh / 2, depth], [-fw / 2, fh / 2, depth]
 	];
 	const pos = [];
 	const edge = (a, b) => { pos.push(...a, ...b); };
@@ -115,8 +115,7 @@ function frustumGeometry(nw, nh, fw, fh, range) {
 		edge(f[i], f[(i + 1) % 4]);
 		edge(n[i], f[i]);
 	}
-	// Mid cross-section at 50% depth
-	const mw = (nw + fw) * 0.5, mh = (nh + fh) * 0.5, mz = range * 0.5;
+	const mw = (nw + fw) * 0.5, mh = (nh + fh) * 0.5, mz = depth * 0.5;
 	const m = [
 		[-mw / 2, -mh / 2, mz], [mw / 2, -mh / 2, mz], [mw / 2, mh / 2, mz], [-mw / 2, mh / 2, mz]
 	];
@@ -126,7 +125,28 @@ function frustumGeometry(nw, nh, fw, fh, range) {
 	return g;
 }
 
-/** Guide covers the well-lit core, not the faint tail of the cutoff. */
+/**
+ * SurfaceLight frustum whose far corners sit on the guide sphere (70% of light.distance).
+ * A plane at z = range with Angle-spread is too big: those corners stick out past the cutoff.
+ */
+function surfaceGuideSize(nw, nh, angleDeg, guideReach) {
+	const theta = Math.max(0, Math.min(170, angleDeg)) * 0.5 * Math.PI / 180;
+	const t = Math.tan(theta);
+	const a = nw * 0.5, c = nh * 0.5, G = Math.max(0.1, guideReach);
+	// hypot(a + t*d, c + t*d, d) = G  →  (2t²+1)d² + 2t(a+c)d + a²+c² − G² = 0
+	const A = 2 * t * t + 1;
+	const B = 2 * t * (a + c);
+	const C = a * a + c * c - G * G;
+	let d = G;
+	const disc = B * B - 4 * A * C;
+	if (disc >= 0 && A > 0) {
+		const root = (-B + Math.sqrt(disc)) / (2 * A);
+		if (root > 0.05) d = Math.min(G, root);
+	}
+	return { depth: d, farW: nw + 2 * t * d, farH: nh + 2 * t * d };
+}
+
+/** Guide covers 70% of the lit volume, not the faint tail of the cutoff. */
 const GUIDE_REACH_SCALE = 0.7;
 
 /** Resolve reach (studs) from the live THREE light first, scaled to the guide size. */
@@ -279,9 +299,8 @@ export class LightGizmos {
 			else if (Math.abs(n[0]) > 0.5) { nw = sz; nh = sy; }
 			else { nw = sx; nh = sy; }
 			const angleDeg = Math.max(0, Math.min(180, Number(rec.Angle) || 90));
-			const spread = Math.tan((angleDeg * 0.5 * Math.PI) / 180) * range;
-			const geom = frustumGeometry(nw * 0.98, nh * 0.98, nw + spread * 2, nh + spread * 2, range);
-			group.add(new LineSegments(geom, mat));
+			const { depth, farW, farH } = surfaceGuideSize(nw * 0.98, nh * 0.98, angleDeg, range);
+			group.add(new LineSegments(frustumGeometry(nw * 0.98, nh * 0.98, farW, farH, depth), mat));
 		} else {
 			mat.dispose();
 			return null;
